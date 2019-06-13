@@ -99,16 +99,5 @@ services:
     depends_on:
       - kong
     entrypoint: /bin/sh
-    command: -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; /app/start.sh;"
-    
-  # konga-prepare-db:
-  #   image: pantsel/konga:latest
-  #   restart: on-failure
-  #   links:
-  #     - db
-  #   networks:
-  #     - kong-net
-  #   depends_on:
-  #     - kong
-  #   command: "-c prepare -a postgres -u postgresql://${KONG_PG_USER}:${KONG_PG_PASSWORD}@db:${KONG_PG_PORT}/${KONGA_PG_DBNAME};"    
+    command: -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; /app/start.sh;"   
     
