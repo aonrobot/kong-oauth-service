@@ -1,0 +1,114 @@
+version: '3'
+
+networks:
+  kong-net:
+    driver: bridge
+
+volumes:
+  kong_data: {}
+
+services:
+  kong-prepare-db:
+    image: kong:latest
+    env_file: .env
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: db
+      KONG_PG_DATABASE: ${KONG_PG_DBNAME:-kong}
+      KONG_PG_USER: ${KONG_PG_USER:-kong}
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD:-kong}
+    links:
+      - db
+    networks:
+      - kong-net
+    restart: on-failure
+    command: /bin/sh -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; kong migrations bootstrap;"
+
+  kong:
+    image: kong:latest
+    env_file: .env
+    user: "${KONG_USER:-root}"
+    container_name: kong-service
+    restart: always
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: db
+      KONG_PG_DATABASE: ${KONG_PG_DBNAME:-kong}
+      KONG_PG_USER: ${KONG_PG_USER:-kong}
+      KONG_PG_PASSWORD: ${KONG_PG_PASSWORD:-kong}
+      # for use X-Forwarded-* header // ref: https://docs.konghq.com/1.0.x/configuration/#ssl_cert
+      KONG_TRUSTED_IPS: 0.0.0.0/0,::/0
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+    links:
+      - db
+    networks:
+      - kong-net
+    ports:
+      - 8000:8000 # upstream http
+      - 8443:8443 # upstream https
+      - 8001:8001 # admin api http
+      - 8444:8444 # admin api https
+    command: /bin/sh -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; kong start;"
+      
+  db:
+    image: postgres:9.6
+    env_file: .env
+    container_name: kong-database
+    environment:
+      POSTGRES_DB: ${KONG_PG_DBNAME:-kong}
+      POSTGRES_PASSWORD: ${KONG_PG_PASSWORD:-kong}
+      POSTGRES_USER: ${KONG_PG_USER:-kong}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${KONG_PG_USER:-kong}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    ports:
+      - ${KONG_PG_PORT}:${KONG_PG_PORT}
+    networks:
+      - kong-net
+    volumes: 
+      - kong_data:/var/lib/postgresql/data
+
+  konga:
+    #image: pantsel/konga:latest
+    build: konga
+    container_name: konga-service
+    env_file: .env
+    environment:
+      NODE_ENV: ${KONG_ENV}
+      TOKEN_SECRET: ${TOKEN_SECRET}
+      PORT: ${KONGA_PORT}
+      DB_ADAPTER: postgres
+      DB_HOST: db
+      DB_DATABASE: ${KONGA_PG_DBNAME}
+      DB_USER: ${KONG_PG_USER}
+      DB_PASSWORD: ${KONG_PG_PASSWORD}
+    ports:
+      - ${KONGA_PORT}:${KONGA_PORT}
+    links:
+      - db
+    networks:
+      - kong-net
+    depends_on:
+      - kong
+    entrypoint: /bin/sh
+    command: -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; /app/start.sh;"
+    
+  # konga-prepare-db:
+  #   image: pantsel/konga:latest
+  #   restart: on-failure
+  #   links:
+  #     - db
+  #   networks:
+  #     - kong-net
+  #   depends_on:
+  #     - kong
+  #   command: "-c prepare -a postgres -u postgresql://${KONG_PG_USER}:${KONG_PG_PASSWORD}@db:${KONG_PG_PORT}/${KONGA_PG_DBNAME};"    
+    
