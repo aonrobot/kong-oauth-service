@@ -87,7 +87,6 @@ services:
       - kong_data:/var/lib/postgresql/data
 
   konga:
-    #image: pantsel/konga:latest
     build: konga
     container_name: konga-service
     env_file: .env
@@ -111,4 +110,17 @@ services:
     entrypoint: /bin/sh
     command: -c "while ! nc -z -w1 db ${KONG_PG_PORT}; do echo sleeping; sleep 1; done; /app/start.sh;"   
 
-  
+  kong-provider-service:
+    image: registry.gitlab.com/aonrobot/kong-provider
+    container_name: msc-thug-provider
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      ERP_DB_HOST: ${ERP_DB_HOST}
+      ERP_DB_PORT: ${ERP_DB_PORT}
+      ERP_DB_USER: ${ERP_DB_USER}
+      ERP_DB_PASS: ${ERP_DB_PASS}
+      ERP_DB_NAME: ${ERP_DB_NAME}
+    ports:
+      - "${PROVIDER_PORT}:8000"
+    networks:
+      - kong-net
